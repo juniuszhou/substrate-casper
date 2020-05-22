@@ -3,4 +3,5 @@ members = [
 	"pallet",
 	"runtime",
 	"node",
+	"consensus/sha3pow"
 ]

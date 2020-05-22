@@ -322,7 +322,7 @@ impl_runtime_apis! {
 			// design pattern. You can see most other APIs in this file do the same.
 			// It is also possible to write your logic right here in the runtime
 			// amalgamator file
-			SumStorage::get_sum()
+			PalletCasper::get_sum()
 		}
 	}
 

@@ -1,9 +1,7 @@
 [package]
 authors = ['Junius Zhou']
 edition = '2018'
-homepage = 'https://substrate.dev/recipes'
 name = 'pow-casper'
-repository = 'https://github.com/substrate-developer-hub/recipes'
 version = "2.0.0-alpha.8"
 description = 'A Substrate node that demonstrates minimal proof of work consensus'
 license = "GPL-3.0-or-later"
@@ -37,18 +35,7 @@ sp-inherents = '2.0.0-alpha.8'
 sp-runtime = '2.0.0-alpha.8'
 sp-transaction-pool = '2.0.0-alpha.8'
 sha3pow = { path = '../consensus/sha3pow' }
-
-# This node is compatible with any of the runtimes below
-# ---
-# Common runtime configured with most Recipes pallets.
 runtime = { package = "casper-runtime", path = "../runtime" }
-
-# Runtime with custom weight and fee calculation.
-# runtime = { package = "weight-fee-runtime", path = "../../runtimes/weight-fee-runtime"}
-
-# Runtime with custom runtime-api (custom API only used in rpc-node)
-# runtime = { package = "api-runtime", path = "../../runtimes/api-runtime" }
-# ---
 
 [build-dependencies]
 vergen = '3.0.4'
