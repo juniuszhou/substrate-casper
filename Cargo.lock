@@ -429,6 +429,27 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "4964518bd3b4a8190e832886cdc0da9794f12e8e6c1613a9e90ff331c4c8724b"
 
 [[package]]
+name = "casper-consensus-pow"
+version = "0.8.0-alpha.8"
+dependencies = [
+ "derive_more",
+ "futures 0.3.5",
+ "log",
+ "parity-scale-codec",
+ "sc-client-api",
+ "sp-api",
+ "sp-block-builder",
+ "sp-blockchain",
+ "sp-consensus",
+ "sp-consensus-pow",
+ "sp-core",
+ "sp-inherents",
+ "sp-runtime",
+ "sp-timestamp",
+ "substrate-prometheus-endpoint 0.8.0-dev",
+]
+
+[[package]]
 name = "casper-runtime"
 version = "2.0.0-alpha.8"
 dependencies = [
@@ -3090,6 +3111,7 @@ checksum = "feb3b2b1033b8a60b4da6ee470325f887758c95d5320f52f9ce0df055a55940e"
 name = "pow-casper"
 version = "2.0.0-alpha.8"
 dependencies = [
+ "casper-consensus-pow",
  "casper-runtime",
  "futures 0.3.5",
  "log",
@@ -3099,7 +3121,6 @@ dependencies = [
  "sc-cli",
  "sc-client-api",
  "sc-consensus",
- "sc-consensus-pow",
  "sc-executor",
  "sc-network",
  "sc-service",
@@ -3828,7 +3849,7 @@ dependencies = [
  "sp-utils",
  "sp-version",
  "structopt",
- "substrate-prometheus-endpoint",
+ "substrate-prometheus-endpoint 0.8.0-alpha.8",
  "time",
  "tokio 0.2.21",
 ]
@@ -3867,7 +3888,7 @@ dependencies = [
  "sp-trie",
  "sp-utils",
  "sp-version",
- "substrate-prometheus-endpoint",
+ "substrate-prometheus-endpoint 0.8.0-alpha.8",
 ]
 
 [[package]]
@@ -3897,7 +3918,7 @@ dependencies = [
  "sp-runtime",
  "sp-state-machine",
  "sp-trie",
- "substrate-prometheus-endpoint",
+ "substrate-prometheus-endpoint 0.8.0-alpha.8",
 ]
 
 [[package]]
@@ -3910,29 +3931,6 @@ dependencies = [
  "sp-blockchain",
  "sp-consensus",
  "sp-runtime",
-]
-
-[[package]]
-name = "sc-consensus-pow"
-version = "0.8.0-alpha.8"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "4bd24c33add4cd80e33dc2e20d5a17b55cc0e1ff888a4ff05a0b1b64dc68efe4"
-dependencies = [
- "derive_more",
- "futures 0.3.5",
- "log",
- "parity-scale-codec",
- "sc-client-api",
- "sp-api",
- "sp-block-builder",
- "sp-blockchain",
- "sp-consensus",
- "sp-consensus-pow",
- "sp-core",
- "sp-inherents",
- "sp-runtime",
- "sp-timestamp",
- "substrate-prometheus-endpoint",
 ]
 
 [[package]]
@@ -4075,7 +4073,7 @@ dependencies = [
  "sp-core",
  "sp-runtime",
  "sp-utils",
- "substrate-prometheus-endpoint",
+ "substrate-prometheus-endpoint 0.8.0-alpha.8",
  "thiserror",
  "unsigned-varint",
  "void",
@@ -4252,7 +4250,7 @@ dependencies = [
  "sp-trie",
  "sp-utils",
  "sp-version",
- "substrate-prometheus-endpoint",
+ "substrate-prometheus-endpoint 0.8.0-alpha.8",
  "sysinfo",
  "tracing",
  "wasm-timer",
@@ -4356,7 +4354,7 @@ dependencies = [
  "sp-tracing",
  "sp-transaction-pool",
  "sp-utils",
- "substrate-prometheus-endpoint",
+ "substrate-prometheus-endpoint 0.8.0-alpha.8",
  "wasm-timer",
 ]
 
@@ -4526,9 +4524,9 @@ dependencies = [
 name = "sha3pow"
 version = "2.0.0-alpha.8"
 dependencies = [
+ "casper-consensus-pow",
  "parity-scale-codec",
  "rand 0.7.3",
- "sc-consensus-pow",
  "sha3",
  "sp-api",
  "sp-consensus-pow",
@@ -4796,7 +4794,7 @@ dependencies = [
  "sp-std",
  "sp-utils",
  "sp-version",
- "substrate-prometheus-endpoint",
+ "substrate-prometheus-endpoint 0.8.0-alpha.8",
 ]
 
 [[package]]
@@ -5295,6 +5293,20 @@ name = "substrate-prometheus-endpoint"
 version = "0.8.0-alpha.8"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7080bfc85d2f3b75ef9b75157ae249bf6bbade1d0a23d8a4d5aa35d47f691fa8"
+dependencies = [
+ "async-std",
+ "derive_more",
+ "futures-util",
+ "hyper 0.13.5",
+ "log",
+ "prometheus",
+ "tokio 0.2.21",
+]
+
+[[package]]
+name = "substrate-prometheus-endpoint"
+version = "0.8.0-dev"
+source = "git+https://github.com/paritytech/substrate#b3e0cb68129eef29fd4521b23c39d1c8dd2e28cf"
 dependencies = [
  "async-std",
  "derive_more",

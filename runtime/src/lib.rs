@@ -206,9 +206,42 @@ impl transaction_payment::Trait for Runtime {
 	type FeeMultiplierUpdate = ();
 }
 
-// ---------------------- Recipe Pallet Configurations ----------------------
+// Casper pallet type definition
+
+parameter_types! {
+	/// Percentage of reward each epoch
+	pub const RewardFactor: u8 = 1;
+
+	/// Epoch Length
+	pub const EpochLength: u8 = 50;
+
+	/// Logout Delay in Epoch
+	pub const LogoutDelay: u8 = 2;
+	
+	pub const WithdrawDelay: u8 = 2;
+}
+
 impl pallet_casper::Trait for Runtime {
 	type Event = Event;
+
+	type Currency = balances::Module<Runtime>;
+
+	type Dynasty = u32;
+
+	type Epoch = u32;
+
+	type ValidatorId = u128;
+
+	type RewardFactor = RewardFactor;
+
+	/// Epoch Length
+	type EpochLength = EpochLength;
+
+	/// Logout Delay in Epoch
+	type LogoutDelay = LogoutDelay;
+
+	/// Withdraw deposit delay in Epoch
+	type WithdrawDelay = WithdrawDelay;
 }
 
 construct_runtime!(
