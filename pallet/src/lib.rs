@@ -8,7 +8,7 @@
 
 use frame_support::{decl_event, decl_module, decl_storage, decl_error, dispatch, Parameter,
 	traits::{Currency, Get, LockableCurrency, ReservableCurrency},
-	weights::Weight,};
+	weights::Weight, dispatch::DispatchResult,};
 use frame_system::{self as system, ensure_signed};
 use codec::{Codec, Decode, Encode};
 use sp_runtime::traits::{AtLeast32Bit, MaybeSerialize, Member, One, Saturating, Zero, NumberFor};
@@ -27,6 +27,7 @@ pub struct Validator<AccountId, Dynasty, BalanceOf> {
 	pub withdraw_address: AccountId,
 }
 
+#[derive(Encode, Decode, Clone, PartialEq, Eq, Default)]
 pub struct CheckPoints<BalanceOf, AccountId> {
 	cur_dyn_deposits: BalanceOf,
 	prev_dyn_deposits: BalanceOf,
@@ -71,7 +72,9 @@ pub trait Trait: system::Trait {
 		+ PartialEq
 		+ Member
 		+ From<u32>
-		+ Into<u32>;
+		+ Into<u32>
+		+ From<Self::BlockNumber>
+		+ Into<Self::BlockNumber>;
 
 	type ValidatorId: Parameter
 		+ AtLeast32Bit
@@ -85,22 +88,24 @@ pub trait Trait: system::Trait {
 		+ Into<u128>;
 
 	/// Percentage of reward each epoch
-	type RewardFactor: Get<u8>;
+	type RewardFactor: Get<u32>;
 
 	/// Epoch Length
-	type EpochLength: Get<u8>;
+	type EpochLength: Get<u32>;
 
-	/// WithDraw Delay in Epoch
-	type WithdrawDelay: Get<u8>;
+	/// WithDraw Delay in u32
+	type WithdrawDelay: Get<u32>;
 
 	/// type LogoutDelay: Get<u8>;
-	type LogoutDelay: Get<u8>;
+	type LogoutDelay: Get<u32>;
+
+	type MinDeposit: Get<BalanceOf<Self>>;
 
 }
 
 decl_error! {
     pub enum Error for Module<T: Trait> {
-        InvalidTextLength,
+        First,
     }
 }
 
@@ -116,17 +121,20 @@ decl_storage! {
 		pub LastFinalizedEpoch get(fn last_finalized_epoch): T::Epoch;
 		pub LastJustifiedEpoch get(fn last_justified_epoch): T::Epoch;
 
+		pub CurrentDynastyDeposits get(fn current_dynasty_deposits): BalanceOf<T>;
+		pub PrevDynastyDeposits get(fn prev_dynasty_deposits): BalanceOf<T>;
+
 		/// Map variable
 		pub ValidatorById get(fn validator_by_id): map hasher(twox_64_concat) T::ValidatorId => Option<Validator<T::AccountId, T::Dynasty, BalanceOf<T>>>;
 		pub ValidatorIdByAccount get(fn validator_id_by_account): map hasher(twox_64_concat) T::AccountId => Option<T::ValidatorId>;
 		pub CheckPointHash get(fn check_point_hash): map hasher(twox_64_concat) T::Dynasty => T::Hash;
 
-		pub DynastyBalanceDelta get(fn dynasty_balance_delta): map hasher(twox_64_concat) T::Dynasty => i128;
+		pub DynastyBalanceDelta get(fn dynasty_balance_delta): map hasher(twox_64_concat) T::Dynasty => BalanceOf<T>;
 		pub TotalCurrentDynastyDeposit get(fn total_cur_dyn_deposits): BalanceOf<T>;
 		pub TotalPreDynastyDeposit get(fn total_pre_dyn_deposits): BalanceOf<T>;
 		pub DynastyStartEpoch get(fn dynasty_start_epoch): map hasher(twox_64_concat) T::Dynasty => T::Epoch;
 		pub DynastyInEpoch get(fn dynasty_in_epoch): map hasher(twox_64_concat) T::Dynasty => T::Epoch;
-
+		pub CheckPointsByEpoch get(fn check_points_by_epoch): map hasher(twox_64_concat) T::Epoch => CheckPoints<BalanceOf<T>, T::AccountId>;
 		/// Map with struct.
 
 
@@ -149,15 +157,39 @@ decl_module! {
 			// Reserve fee for thread and post
 			<T as Trait>::Currency::reserve(&who, amount)?;
 
-			let validator = Validator {
-				deposit: amount,
-				start_dynasty: <CurrentDynasty<T>>::get() - One::one() - One::one(),
-				end_dynasty: end_dynasty,
-				address: who,
-				withdraw_address: withdraw_address,
+			if Self::validator_id_by_account(withdraw_address.clone()).is_some() {
+				/// withdraw address already registered before.
+				return Err(Error::<T>::First.into());
 			};
 
+			if amount < T::MinDeposit::get() {
+				/// Reserved balance must more than minimum deposit
+				return Err(Error::<T>::First.into());
+			};
+
+			<T as Trait>::Currency::reserve(&who, amount)?;
+
+			let start_dynasty = <CurrentDynasty<T>>::get() + One::one() + One::one();
+
+			let validator = Validator {
+				deposit: amount,
+				start_dynasty: start_dynasty,
+				end_dynasty: end_dynasty,
+				address: who,
+				withdraw_address: withdraw_address.clone(),
+			};
+
+			/// Set deposit delta for start dynasty 
+			<DynastyBalanceDelta<T>>::mutate(start_dynasty, |value| *value += amount);
+
+			/// Put new validator into validator map
 			<ValidatorById<T>>::mutate(<NextValidatorId<T>>::get(), |value| *value = Some(validator));
+
+			/// Set validator's withdraw address
+			<ValidatorIdByAccount<T>>::mutate(withdraw_address.clone(), |value| *value = Some(<NextValidatorId<T>>::get()));
+			
+			/// Increment the next validator id
+			<NextValidatorId<T>>::mutate(|value| *value += One::one());
 
 			Ok(())
 		}
@@ -181,10 +213,7 @@ decl_module! {
 			/// Init epoch if block number is times of epoch length.
 			if now % epoch_length_as_block_number == zero_block_number {
 				let epoch_number = now / epoch_length_as_block_number;
-
-
-				// Self::initialize_epoch(T::Epoch::from(epoch_number.into()));
-
+				Self::initialize_epoch(epoch_number.into());
 			}
 
 			0
@@ -217,6 +246,10 @@ decl_module! {
 impl<T: Trait> Module<T> {
 	pub fn get_sum() -> u32 {
 		Thing1::get() + Thing2::get()
+	}
+
+	fn get_hash(block_number: T::BlockNumber) -> T::Hash {
+		<system::Module<T>>::block_hash(block_number)
 	}
 
 	fn in_dynasty(validator_id: T::ValidatorId, dynasty: T::Dynasty) -> bool {
@@ -271,14 +304,52 @@ impl<T: Trait> Module<T> {
 	}
 
 	fn instant_finalize() {
-		// self.main_hash_justified = True
-		// self.checkpoints[epoch - 1].is_justified = True
-		// self.checkpoints[epoch - 1].is_finalized = True
-		// self.last_justified_epoch = epoch - 1
-		// self.last_finalized_epoch = epoch - 1
+		MainHashJustified::mutate(|value| *value = true);
+		<LastFinalizedEpoch<T>>::mutate(|value| *value = Self::current_epoch());
+		<LastJustifiedEpoch<T>>::mutate(|value| *value = Self::current_epoch());
+		<CheckPointsByEpoch<T>>::mutate(Self::current_epoch() - One::one(),
+			|value| *value = CheckPoints {
+				is_justified: true,
+				is_finalized: true,
+				..Default::default()
+			})
 	}
 
-	pub fn initialize_epoch(epoch: T::Epoch) {
+	fn deposit_exists() -> bool {
+		Self::current_dynasty_deposits() > Zero::zero() && 
+		Self::prev_dynasty_deposits() > Zero::zero()
+	}
+
+	pub fn initialize_epoch(epoch: T::Epoch) -> DispatchResult {
+		/// New epoch must be equal current plus one
+		if epoch != Self::current_epoch() + One::one() {
+			Err(Error::<T>::First.into())
+		} else {
+			let new_checkpoint = CheckPoints {
+				cur_dyn_deposits: Self::current_dynasty_deposits(),
+				prev_dyn_deposits: Self::prev_dynasty_deposits(),
+			
+				/// balance for each dynasty
+				cur_dyn_votes: vec![],
+				prev_dyn_votes: vec![],
+			
+				/// epoch is index of vector, 
+				vote_account_set: Vec::<BTreeSet<T::AccountId>>::new(),
+				is_justified: false,
+				is_finalized: false,
+			};
+
+			<CurrentEpoch<T>>::mutate(|value| *value = epoch);
+
+			/// Before the first validator deposits, new epochs are finalized instantly.
+			Self::instant_finalize();
+
+			/// Store checkout point hash for each epoch
+			let epoch_length_as_epoch: T::Epoch = T::EpochLength::get().into();
+			<CheckPointHash<T>>::mutate(Self::current_dynasty(), |value| *value = Self::get_hash((epoch * epoch_length_as_epoch).into()));
+
+			Ok(())
+		}
 		// checkpoints[epoch].cur_dyn_deposits = total_cur_dyn_deposits;
 		// checkpoints[epoch].prev_dyn_deposits = total_cur_dyn_deposits;
 

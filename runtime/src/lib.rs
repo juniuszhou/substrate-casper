@@ -210,15 +210,17 @@ impl transaction_payment::Trait for Runtime {
 
 parameter_types! {
 	/// Percentage of reward each epoch
-	pub const RewardFactor: u8 = 1;
+	pub const RewardFactor: u32 = 1;
 
 	/// Epoch Length
-	pub const EpochLength: u8 = 50;
+	pub const EpochLength: u32 = 50;
 
 	/// Logout Delay in Epoch
-	pub const LogoutDelay: u8 = 2;
+	pub const LogoutDelay: u32 = 2;
 	
-	pub const WithdrawDelay: u8 = 2;
+	pub const WithdrawDelay: u32 = 2;
+
+	pub const MinDeposit: Balance = 1_000_000;
 }
 
 impl pallet_casper::Trait for Runtime {
@@ -242,6 +244,8 @@ impl pallet_casper::Trait for Runtime {
 
 	/// Withdraw deposit delay in Epoch
 	type WithdrawDelay = WithdrawDelay;
+
+	type MinDeposit = MinDeposit;
 }
 
 construct_runtime!(
