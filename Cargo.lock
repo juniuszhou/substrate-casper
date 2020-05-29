@@ -2729,6 +2729,7 @@ dependencies = [
 name = "pallet-casper-runtime-api"
 version = "2.0.0"
 dependencies = [
+ "parity-scale-codec",
  "serde_json",
  "sp-api",
 ]

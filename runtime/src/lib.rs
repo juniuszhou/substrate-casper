@@ -221,6 +221,8 @@ parameter_types! {
 	pub const WithdrawDelay: u32 = 2;
 
 	pub const MinDeposit: Balance = 1_000_000;
+
+	pub const RewardRateBase: u32 = 10_000;
 }
 
 impl pallet_casper::Trait for Runtime {
@@ -246,6 +248,8 @@ impl pallet_casper::Trait for Runtime {
 	type WithdrawDelay = WithdrawDelay;
 
 	type MinDeposit = MinDeposit;
+
+	type RewardRateBase = RewardRateBase;
 }
 
 construct_runtime!(
@@ -260,7 +264,7 @@ construct_runtime!(
 		RandomnessCollectiveFlip: randomness_collective_flip::{Module, Call, Storage},
 		Sudo: sudo::{Module, Call, Config<T>, Storage, Event<T>},
 		TransactionPayment: transaction_payment::{Module, Storage},
-		PalletCasper: pallet_casper::{Module, Call, Storage, Event},
+		PalletCasper: pallet_casper::{Module, Call, Storage, Event<T>},
 	}
 );
 
@@ -291,7 +295,28 @@ pub type CheckedExtrinsic = generic::CheckedExtrinsic<AccountId, Call, SignedExt
 pub type Executive =
 	frame_executive::Executive<Runtime, Block, system::ChainContext<Runtime>, Runtime, AllModules>;
 
+pub type Epoch = <Runtime as pallet_casper::Trait>::Epoch;
+
 impl_runtime_apis! {
+	// Here we implement our custom runtime API.	
+	impl pallet_casper_runtime_api::CasperRuntimeApi<Block, Epoch, Hash> for Runtime {
+		fn get_highest_finalized_epoch() -> Epoch {
+			PalletCasper::last_finalized_epoch()
+		}
+
+		fn get_highest_justified_epoch() -> Epoch {
+			PalletCasper::last_justified_epoch()
+		}
+
+		fn get_recommended_source_epoch() -> Epoch {
+			PalletCasper::expected_source_epoch()
+		}
+
+		fn get_recommended_target_hash() -> Hash {
+			PalletCasper::recommended_target_hash()
+		}
+	}
+
 	impl sp_api::Core<Block> for Runtime {
 		fn version() -> RuntimeVersion {
 			VERSION
@@ -352,16 +377,7 @@ impl_runtime_apis! {
 		}
 	}
 
-	// Here we implement our custom runtime API.
-	impl pallet_casper_runtime_api::SumStorageApi<Block> for Runtime {
-		fn get_sum() -> u32 {
-			// This Runtime API calls into a specific pallet. Calling a pallet is a common
-			// design pattern. You can see most other APIs in this file do the same.
-			// It is also possible to write your logic right here in the runtime
-			// amalgamator file
-			PalletCasper::get_sum()
-		}
-	}
+	
 
 	impl sp_session::SessionKeys<Block> for Runtime {
 		fn generate_session_keys(_seed: Option<Vec<u8>>) -> Vec<u8> {
