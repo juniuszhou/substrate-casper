@@ -37,12 +37,12 @@ use std::borrow::Cow;
 use std::thread;
 use std::collections::HashMap;
 use std::marker::PhantomData;
-use sc_client_api::{BlockOf, backend::AuxStore};
+use sc_client_api::{BlockOf, backend::{AuxStore, Backend},};
 use sp_blockchain::{HeaderBackend, ProvideCache, well_known_cache_keys::Id as CacheKeyId};
 use sp_block_builder::BlockBuilder as BlockBuilderApi;
 use sp_runtime::{Justification, RuntimeString};
 use sp_runtime::generic::{BlockId, Digest, DigestItem};
-use sp_runtime::traits::{Block as BlockT, Header as HeaderT};
+use sp_runtime::traits::{Block as BlockT, Header as HeaderT, NumberFor};
 use sp_api::ProvideRuntimeApi;
 use sp_consensus_pow::{Seal, TotalDifficulty, POW_ENGINE_ID};
 use sp_inherents::{InherentDataProviders, InherentData};
@@ -57,6 +57,7 @@ use sp_consensus::import_queue::{
 use codec::{Encode, Decode};
 use prometheus_endpoint::Registry;
 use sc_client_api;
+use sc_client_api::{LockImportRun, Finalizer,};
 use log::*;
 use sp_timestamp::{InherentError as TIError, TimestampInherentData};
 
@@ -190,16 +191,17 @@ pub trait PowAlgorithm<B: BlockT> {
 }
 
 /// A block importer for PoW.
-pub struct PowBlockImport<B: BlockT, I, C, S, Algorithm> {
+pub struct PowBlockImport<BE, B: BlockT, I, C, S, Algorithm> {
 	algorithm: Algorithm,
 	inner: I,
 	select_chain: Option<S>,
 	client: Arc<C>,
 	inherent_data_providers: sp_inherents::InherentDataProviders,
 	check_inherents_after: <<B as BlockT>::Header as HeaderT>::Number,
+	_phantom: PhantomData<BE>,
 }
 
-impl<B: BlockT, I: Clone, C, S: Clone, Algorithm: Clone> Clone for PowBlockImport<B, I, C, S, Algorithm> {
+impl<BE, B: BlockT, I: Clone, C, S: Clone, Algorithm: Clone> Clone for PowBlockImport<BE, B, I, C, S, Algorithm> {
 	fn clone(&self) -> Self {
 		Self {
 			algorithm: self.algorithm.clone(),
@@ -208,15 +210,23 @@ impl<B: BlockT, I: Clone, C, S: Clone, Algorithm: Clone> Clone for PowBlockImpor
 			client: self.client.clone(),
 			inherent_data_providers: self.inherent_data_providers.clone(),
 			check_inherents_after: self.check_inherents_after.clone(),
+			_phantom: Default::default(),
 		}
 	}
 }
 
-impl<B, I, C, S, Algorithm> PowBlockImport<B, I, C, S, Algorithm> where
+// pub trait ClientForPow<Block>: LockImportRun<Block, BE> + Finalizer<Block, BE>
+// 	where BE: Backend<Block>,
+// 		Block: BlockT,
+// {}
+
+impl<BE, B, I, C, S, Algorithm> PowBlockImport<BE, B, I, C, S, Algorithm> where
 	B: BlockT,
+	BE: Backend<B>,
 	I: BlockImport<B, Transaction = sp_api::TransactionFor<C, B>> + Send + Sync,
 	I::Error: Into<ConsensusError>,
-	C: ProvideRuntimeApi<B> + Send + Sync + HeaderBackend<B> + AuxStore + ProvideCache<B> + BlockOf,
+	C: ProvideRuntimeApi<B> + Send + Sync + HeaderBackend<B> + AuxStore + ProvideCache<B> + BlockOf 
+	+ LockImportRun<B, BE> + Finalizer<B, BE>,
 	C::Api: BlockBuilderApi<B, Error = sp_blockchain::Error>,
 	Algorithm: PowAlgorithm<B>,
 {
@@ -230,7 +240,7 @@ impl<B, I, C, S, Algorithm> PowBlockImport<B, I, C, S, Algorithm> where
 		inherent_data_providers: sp_inherents::InherentDataProviders,
 	) -> Self {
 		Self { inner, client, algorithm, check_inherents_after,
-			   select_chain, inherent_data_providers }
+			   select_chain, inherent_data_providers, _phantom: PhantomData, }
 	}
 
 	fn check_inherents(
@@ -274,12 +284,14 @@ impl<B, I, C, S, Algorithm> PowBlockImport<B, I, C, S, Algorithm> where
 	}
 }
 
-impl<B, I, C, S, Algorithm> BlockImport<B> for PowBlockImport<B, I, C, S, Algorithm> where
+impl<BE, B, I, C, S, Algorithm> BlockImport<B> for PowBlockImport<BE, B, I, C, S, Algorithm> where
 	B: BlockT,
+	BE: Backend<B>,
 	I: BlockImport<B, Transaction = sp_api::TransactionFor<C, B>> + Send + Sync,
 	I::Error: Into<ConsensusError>,
 	S: SelectChain<B>,
-	C: ProvideRuntimeApi<B> + Send + Sync + HeaderBackend<B> + AuxStore + ProvideCache<B> + BlockOf,
+	C: ProvideRuntimeApi<B> + Send + Sync + HeaderBackend<B> + AuxStore + ProvideCache<B> + BlockOf 
+	+ LockImportRun<B, BE> + Finalizer<B, BE>,
 	C::Api: BlockBuilderApi<B, Error = sp_blockchain::Error>,
 	Algorithm: PowAlgorithm<B>,
 	Algorithm::Difficulty: 'static,
@@ -368,8 +380,28 @@ impl<B, I, C, S, Algorithm> BlockImport<B> for PowBlockImport<B, I, C, S, Algori
 			));
 		}
 
-		self.inner.import_block(block, new_cache).map_err(Into::into)
+		let result = self.inner.import_block(block, new_cache).map_err(Into::into);
+		// if result.is_ok() {
+		info!("Junius try to finalize the block at {:?}, import result is {:?}", pre_hash.clone(), result);
+		finalize_block(self.client.clone(), parent_hash);
+		// finalize_block(self.client.clone(), pre_hash);
+		// }
+		result
+		//self.inner.finalize_block().map_err(Into::into);
 	}
+}
+
+pub fn finalize_block<BE, Block, Client>(client: Arc<Client>, hash: Block::Hash,) where
+	Block:  BlockT,
+	BE: Backend<Block>,
+	Client: LockImportRun<Block, BE> + Finalizer<Block, BE>, {
+		let result = client.lock_import_and_run(|import_op| {
+			let inner_result = client.apply_finality(import_op, BlockId::Hash(hash), None, true);
+			info!("Junius apply_finality result is {:?}", inner_result);
+			inner_result
+		});
+		info!("Junius lock_import_and_run finalize block result is {:?}", result);
+
 }
 
 /// A verifier for PoW blocks.

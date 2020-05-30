@@ -445,6 +445,7 @@ dependencies = [
  "sp-core",
  "sp-inherents",
  "sp-runtime",
+ "sp-std",
  "sp-timestamp",
  "substrate-prometheus-endpoint 0.8.0-dev",
 ]
