@@ -45,8 +45,6 @@ type BalanceOf<T> = <<T as Trait>::Currency as Currency<<T as system::Trait>::Ac
 
 /// The module's configuration trait.
 pub trait Trait: system::Trait {
-	// type Self::BlockNumber: From<usize> + Into<usize>;
-	/// The overarching event type.
 	type Event: From<Event<Self>> + Into<<Self as system::Trait>::Event>;
 
 	/// Currency type for this module.
@@ -132,24 +130,43 @@ decl_storage! {
 		pub NextValidatorId get(fn next_validator_id): T::ValidatorId;
 		pub CurrentEpoch get(fn current_epoch): T::Epoch;
 		pub CurrentDynasty get(fn current_dynasty): T::Dynasty;
+
+		/// Epoch as source epoch for vote
 		pub ExpectedSourceEpoch get(fn expected_source_epoch): T::Epoch;
+
+		/// If the block hash of current epoch justified
 		pub MainHashJustified get(fn main_hash_justified): bool;
+
 		pub LastFinalizedEpoch get(fn last_finalized_epoch): T::Epoch;
 		pub LastJustifiedEpoch get(fn last_justified_epoch): T::Epoch;
-		pub CurrentDynastyDeposits get(fn current_dynasty_deposits): BalanceOf<T>;
-		pub PrevDynastyDeposits get(fn prev_dynasty_deposits): BalanceOf<T>;
+		pub TotalCurrentDynastyDeposit get(fn total_cur_dyn_deposits): BalanceOf<T>;
+		pub TotalPreDynastyDeposit get(fn total_pre_dyn_deposits): BalanceOf<T>;
+
 		pub RecommendedTargetHash get(fn recommended_target_hash): T::Hash;
 
 		/// Map variable
 		pub ValidatorById get(fn validator_by_id): map hasher(twox_64_concat) T::ValidatorId => Option<Validator<T::AccountId, T::Dynasty, BalanceOf<T>>>;
+		
+		/// Validator Id map to withdraw account
 		pub ValidatorIdByAccount get(fn validator_id_by_account): map hasher(twox_64_concat) T::AccountId => T::ValidatorId;
+		
+		/// Hash for each dynasty to be finalized
 		pub CheckPointHash get(fn check_point_hash): map hasher(twox_64_concat) T::Dynasty => T::Hash;
 
-		pub DynastyBalanceDelta get(fn dynasty_balance_delta): map hasher(twox_64_concat) T::Dynasty => BalanceOf<T>;
-		pub TotalCurrentDynastyDeposit get(fn total_cur_dyn_deposits): BalanceOf<T>;
-		pub TotalPreDynastyDeposit get(fn total_pre_dyn_deposits): BalanceOf<T>;
+		/// Since balance not support the signed type, we use two maps to record the deposti delta from dynasty to dynasty
+		/// New balance deposited in dynasty   DynastyBalanceDelta
+		pub NewDepositInDynasty get(fn new_deposity_in_dynasty): map hasher(twox_64_concat) T::Dynasty => BalanceOf<T>;
+		
+		/// Deposited balance withdrawed in dynasty
+		pub WithdrawedDepositInDynasty get(fn withdrawed_deposit_in_dynasty): map hasher(twox_64_concat) T::Dynasty => BalanceOf<T>;
+
+		/// Start epoch for each dynasty
 		pub DynastyStartEpoch get(fn dynasty_start_epoch): map hasher(twox_64_concat) T::Dynasty => T::Epoch;
-		pub DynastyInEpoch get(fn dynasty_in_epoch): map hasher(twox_64_concat) T::Dynasty => T::Epoch;
+		
+		/// Map each epoch to dynasty
+		pub DynastyInEpoch get(fn dynasty_in_epoch): map hasher(twox_64_concat) T::Epoch => T::Dynasty;
+
+		/// CheckPoint information for each epoch
 		pub CheckPointsByEpoch get(fn check_points_by_epoch): map hasher(twox_64_concat) T::Epoch => CheckPoints<BalanceOf<T>, T::ValidatorId>;
 		
 		/// Double Map
@@ -234,7 +251,7 @@ decl_module! {
 			Ok(())
 		}
 
-		/// deposit to become a validator ??? how to get balance transfered with call the runtime method
+		/// deposit to become a validator
 		#[weight = 10_000]
 		pub fn deposit(origin, amount: BalanceOf<T>, end_dynasty: T::Dynasty, withdraw_address: T::AccountId) -> dispatch::DispatchResult {
 			// Check that its a valid signature
@@ -250,14 +267,14 @@ decl_module! {
 				return Err(Error::<T>::DepositLessThanMinimum.into());
 			};
 
-			// Reserve fee for thread and post
+			// Reserve balance to be validator
 			<T as Trait>::Currency::reserve(&who, amount)?;
 
 			// Increment the next validator id before put validator into map
 			// So we skip the validator id as 0 reserved for not registered
 			<NextValidatorId<T>>::mutate(|value| *value += One::one());
 
-			// Start dynasty as two dynasty later according to spec
+			// Start dynasty set as two dynasty later according to spec
 			let start_dynasty = <CurrentDynasty<T>>::get() + One::one() + One::one();
 
 			let validator = Validator {
@@ -270,7 +287,7 @@ decl_module! {
 			};
 
 			// Set deposit delta for start dynasty 
-			<DynastyBalanceDelta<T>>::mutate(start_dynasty, |value| *value += amount);
+			<NewDepositInDynasty<T>>::mutate(start_dynasty, |value| *value += amount);
 
 			// Put new validator into validator map
 			<ValidatorById<T>>::mutate(<NextValidatorId<T>>::get(), |value| *value = Some(validator));
@@ -375,7 +392,7 @@ impl<T: Trait> Module<T> {
 				}
 			};
 	
-			<DynastyBalanceDelta<T>>::mutate(end_dynasty, |value| *value -= validator.deposit);
+			<WithdrawedDepositInDynasty<T>>::mutate(end_dynasty, |value| *value += validator.deposit);
 		}
 	}
 
@@ -448,7 +465,8 @@ impl<T: Trait> Module<T> {
 	
 				// Rotate the deposit for previous and current dynasty
 				<TotalPreDynastyDeposit<T>>::mutate(|value| *value = <TotalCurrentDynastyDeposit<T>>::get());
-				<TotalCurrentDynastyDeposit<T>>::mutate(|value| *value = <DynastyBalanceDelta<T>>::get(<CurrentDynasty<T>>::get()));
+				<TotalCurrentDynastyDeposit<T>>::mutate(|value| *value = <NewDepositInDynasty<T>>::get(<CurrentDynasty<T>>::get()) -
+				<WithdrawedDepositInDynasty<T>>::get(<CurrentDynasty<T>>::get()));
 	
 				// Map the dynasty to epoch
 				<DynastyStartEpoch<T>>::mutate(<CurrentDynasty<T>>::get(), |value| *value = <CurrentEpoch<T>>::get());
@@ -456,7 +474,7 @@ impl<T: Trait> Module<T> {
 		}
 
 		// Map epoch to dynasty
-		<DynastyInEpoch<T>>::mutate(<CurrentDynasty<T>>::get(), |value| *value = <CurrentEpoch<T>>::get());
+		<DynastyInEpoch<T>>::mutate(<CurrentEpoch<T>>::get(), |value| *value = <CurrentDynasty<T>>::get());
 
 		// If main hash justified then update expected source epoch
 		if MainHashJustified::get() {
@@ -489,8 +507,8 @@ impl<T: Trait> Module<T> {
 	}
 
 	fn deposit_exists() -> bool {
-		Self::current_dynasty_deposits() > Zero::zero() && 
-		Self::prev_dynasty_deposits() > Zero::zero()
+		Self::total_cur_dyn_deposits() > Zero::zero() && 
+		Self::total_pre_dyn_deposits() > Zero::zero()
 	}
 
 	/// Initialize a new epoch
@@ -501,8 +519,8 @@ impl<T: Trait> Module<T> {
 		} else {
 			// Insert new check point 
 			<CheckPointsByEpoch<T>>::insert(epoch, CheckPoints {
-				cur_dyn_deposits: Self::current_dynasty_deposits(),
-				prev_dyn_deposits: Self::prev_dynasty_deposits(),
+				cur_dyn_deposits: Self::total_cur_dyn_deposits(),
+				prev_dyn_deposits: Self::total_pre_dyn_deposits(),
 				vote_account_set: BTreeSet::<T::ValidatorId>::new(),
 				..Default::default()
 			});

@@ -42,7 +42,7 @@ use sp_blockchain::{HeaderBackend, ProvideCache, well_known_cache_keys::Id as Ca
 use sp_block_builder::BlockBuilder as BlockBuilderApi;
 use sp_runtime::{Justification, RuntimeString};
 use sp_runtime::generic::{BlockId, Digest, DigestItem};
-use sp_runtime::traits::{Block as BlockT, Header as HeaderT, NumberFor};
+use sp_runtime::traits::{Block as BlockT, Header as HeaderT};
 use sp_api::ProvideRuntimeApi;
 use sp_consensus_pow::{Seal, TotalDifficulty, POW_ENGINE_ID};
 use sp_inherents::{InherentDataProviders, InherentData};
@@ -675,6 +675,7 @@ fn mine_loop<B: BlockT, C, Algorithm, E, SO, S, CAW>(
 				)?;
 
 				if let Some(seal) = seal {
+					std::thread::sleep(std::time::Duration::from_secs(2));
 					break (difficulty, seal)
 				}
 

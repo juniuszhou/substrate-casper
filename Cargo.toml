@@ -3,5 +3,6 @@ members = [
 	"pallet",
 	"runtime",
 	"node",
+	"consensus/pow",
 	"consensus/sha3pow"
 ]

@@ -1,1 +1,26 @@
-{}
+{
+    "Dynasty": "u32",
+    "Epoch": "u32",
+    "ValidatorId": "u128",
+    "RewardFactor": "u32",
+	"EpochLength": "u32",
+	"LogoutDelay": "u32",
+	"WithdrawDelay": "u32",
+	"MinDeposit": "u32",
+    "RewardRateBase": "u128",
+    "Validator": {
+        "deposit": "u128",
+        "reward": "u128",
+        "start_dynasty": "Dynasty",
+        "end_dynasty": "Dynasty",
+        "address": "AccountId",
+        "withdraw_address": "AccountId"
+    },
+    "CheckPoints": {
+        "cur_dyn_deposits": "u128",
+        "prev_dyn_deposits": "u128",
+        "vote_account_set": "ValidatorId",
+        "is_justified": "bool",
+        "is_finalized": "bool"
+    }
+}
