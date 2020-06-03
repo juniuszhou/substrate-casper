@@ -1,6 +1,7 @@
 use parity_scale_codec::{Decode, Encode};
 use rand::{rngs::SmallRng, thread_rng, SeedableRng};
 use casper_consensus_pow::{Error, PowAlgorithm};
+// use sc_consensus_pow::{Error, PowAlgorithm};
 use sha3::{Digest, Sha3_256};
 use sp_api::ProvideRuntimeApi;
 use sp_consensus_pow::{DifficultyApi, Seal as RawSeal};
@@ -166,6 +167,7 @@ where
 			.runtime_api()
 			.difficulty(&parent_id)
 			.map_err(|e| {
+				// sc_consensus_pow::Error::Environment(format!(
 				casper_consensus_pow::Error::Environment(format!(
 					"Fetching difficulty from runtime failed: {:?}",
 					e

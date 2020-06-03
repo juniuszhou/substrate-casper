@@ -34,6 +34,7 @@ pub struct Validator<AccountId, Dynasty, BalanceOf> {
 /// Check point record for each dynasty
 #[derive(Encode, Decode, Clone, Default)]
 pub struct CheckPoints<BalanceOf, ValidatorId> where ValidatorId: Ord {
+// pub struct CheckPoints<BalanceOf> {
 	cur_dyn_deposits: BalanceOf,
 	prev_dyn_deposits: BalanceOf,
 	vote_account_set: BTreeSet<ValidatorId>,
@@ -168,7 +169,8 @@ decl_storage! {
 
 		/// CheckPoint information for each epoch
 		pub CheckPointsByEpoch get(fn check_points_by_epoch): map hasher(twox_64_concat) T::Epoch => CheckPoints<BalanceOf<T>, T::ValidatorId>;
-		
+		// pub CheckPointsByEpoch get(fn check_points_by_epoch): map hasher(twox_64_concat) T::Epoch => CheckPoints<BalanceOf<T>>;
+
 		/// Double Map
 		pub CurrentDynastyVotes get(fn current_dynasty_votes): double_map hasher(twox_64_concat) T::Dynasty, hasher(twox_64_concat) T::Epoch => BalanceOf<T>;
 		pub PreDynastyVotes get(fn pre_dynasty_votes): double_map hasher(twox_64_concat) T::Dynasty, hasher(twox_64_concat) T::Epoch => BalanceOf<T>;
@@ -258,7 +260,7 @@ decl_module! {
 			let who = ensure_signed(origin)?;
 
 			// Check if withdraw address registered before
-			if <ValidatorIdByAccount<T>>::get(&withdraw_address) == Zero::zero() {
+			if <ValidatorIdByAccount<T>>::get(&withdraw_address) != Zero::zero() {
 				return Err(Error::<T>::ValidatorIdNotValid.into());
 			};
 

@@ -1,6 +1,7 @@
 [workspace]
 members = [
 	"pallet",
+	"pallet/runtime-api",
 	"runtime",
 	"node",
 	"consensus/pow",
