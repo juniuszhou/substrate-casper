@@ -1,4 +1,5 @@
 {
+    "RuntimeDbWeight": "u32",
     "Dynasty": "u32",
     "Epoch": "u32",
     "ValidatorId": "u128",
@@ -22,5 +23,15 @@
         "vote_account_set": "ValidatorId",
         "is_justified": "bool",
         "is_finalized": "bool"
-    }
+    },
+    "MultiSignature": {
+        "_enum": {
+          "Ed25519": "Ed25519Signature",
+          "Sr25519": "Sr25519Signature",
+          "Ecdsa": "EcdsaSignature"
+        }
+      },
+      "EcdsaSignature": "[u8; 65]",
+      "Ed25519Signature": "H512",
+      "Sr25519Signature": "H512"
 }

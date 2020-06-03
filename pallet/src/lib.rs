@@ -353,11 +353,11 @@ decl_module! {
 
 		/// On block Initialization
 		fn on_initialize(now: T::BlockNumber) -> Weight {
-			let zero_block_number: T::BlockNumber = 0.into();
+			let one_block_number: T::BlockNumber = 1.into();
 			let epoch_length_as_block_number: T::BlockNumber = T::EpochLength::get().into();
 
 			// Init epoch if block number is times of epoch length.
-			if now % epoch_length_as_block_number == zero_block_number {
+			if now % epoch_length_as_block_number == one_block_number {
 				let epoch_number = now / epoch_length_as_block_number;
 				let block_number_as_epoch: T::Epoch = epoch_number.into();
 				Self::initialize_epoch(block_number_as_epoch);
@@ -514,9 +514,7 @@ impl<T: Trait> Module<T> {
 	/// Initialize a new epoch
 	pub fn initialize_epoch(epoch: T::Epoch) {
 		// New epoch must be equal current plus one
-		if epoch != Self::current_epoch() + One::one() {
-			debug::print!("The epoch number is not continuous");
-		} else {
+		if epoch == Self::current_epoch() + One::one() || epoch == Zero::zero() {
 			// Insert new check point 
 			<CheckPointsByEpoch<T>>::insert(epoch, CheckPoints {
 				cur_dyn_deposits: Self::total_cur_dyn_deposits(),
@@ -529,7 +527,7 @@ impl<T: Trait> Module<T> {
 			<CurrentEpoch<T>>::mutate(|value| *value = epoch);
 
 			// If no deposit, new epoch is finalized instantly.
-			if Self::deposit_exists() {
+			if !Self::deposit_exists() {
 				Self::instant_finalize();
 			}
 
@@ -540,6 +538,12 @@ impl<T: Trait> Module<T> {
 			
 			// Try to increment dynasty
 			Self::increment_dynasty();
+ 
+			// Set recommended target hash as last epoch's hash
+			if epoch != Zero::zero() {
+				<RecommendedTargetHash<T>>::mutate(|value| *value = 
+					Self::get_hash(((epoch - One::one()) * epoch_length_as_epoch).into()));
+			}
 		}
 	}
 }

@@ -675,7 +675,7 @@ fn mine_loop<B: BlockT, C, Algorithm, E, SO, S, CAW>(
 				)?;
 
 				if let Some(seal) = seal {
-					std::thread::sleep(std::time::Duration::from_secs(2));
+					std::thread::sleep(std::time::Duration::from_secs(1));
 					break (difficulty, seal)
 				}
 
