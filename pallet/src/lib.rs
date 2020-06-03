@@ -346,6 +346,8 @@ decl_module! {
 				}
 			}
 
+			<CheckPointsByEpoch<T>>::mutate(target_epoch, |value| value.vote_account_set.insert(validator_id));
+
 			Self::deposit_event(RawEvent::Vote(who, validator_id, source_epoch, target_epoch, target_hash));
 
 			Ok(())
