@@ -16,7 +16,7 @@ use frame_system as system;
 use sp_api::impl_runtime_apis;
 use sp_core::{OpaqueMetadata, H256};
 use sp_runtime::traits::{
-	BlakeTwo256, Block as BlockT, ConvertInto, IdentifyAccount, IdentityLookup, Verify,
+	BlakeTwo256, Block as BlockT, IdentifyAccount, IdentityLookup, Verify,
 };
 use sp_runtime::{
 	create_runtime_str, generic, traits::Saturating,
@@ -241,7 +241,7 @@ impl pallet_casper::Trait for Runtime {
 
 	type Epoch = u32;
 
-	type ValidatorId = u128;
+	type CasperValidatorId = u128;
 
 	type RewardFactor = RewardFactor;
 
@@ -306,7 +306,7 @@ pub type Epoch = <Runtime as pallet_casper::Trait>::Epoch;
 
 impl_runtime_apis! {
 	// Here we implement our custom runtime API.	
-	impl pallet_casper_runtime_api::CasperRuntimeApi<Block, Epoch, Hash> for Runtime {
+	impl pallet_casper_runtime_api::CasperRuntimeApi<Block, Epoch> for Runtime {
 		fn get_highest_finalized_epoch() -> Epoch {
 			PalletCasper::last_finalized_epoch()
 		}
@@ -319,8 +319,12 @@ impl_runtime_apis! {
 			PalletCasper::expected_source_epoch()
 		}
 
-		fn get_recommended_target_hash() -> Hash {
+		fn get_recommended_target_hash() -> <Block as BlockT>::Hash {
 			PalletCasper::recommended_target_hash()
+		}
+
+		fn get_last_finalized_hash() -> <Block as BlockT>::Hash {
+			PalletCasper::last_finalized_hash()
 		}
 	}
 

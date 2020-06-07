@@ -2,7 +2,7 @@
     "RuntimeDbWeight": "u32",
     "Dynasty": "u32",
     "Epoch": "u32",
-    "ValidatorId": "u128",
+    "CasperValidatorId": "u32",
     "RewardFactor": "u32",
 	"EpochLength": "u32",
 	"LogoutDelay": "u32",
@@ -20,7 +20,7 @@
     "CheckPoints": {
         "cur_dyn_deposits": "u128",
         "prev_dyn_deposits": "u128",
-        "vote_account_set": "ValidatorId",
+        "vote_account_set": "BTreeSet<CasperValidatorId>",
         "is_justified": "bool",
         "is_finalized": "bool"
     },

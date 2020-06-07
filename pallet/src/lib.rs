@@ -8,7 +8,7 @@
 //! Reference link: https://eips.ethereum.org/EIPS/eip-1011
 //! Python Implementation: https://github.com/ethereum/casper/tree/master/casper/contracts
 
-use frame_support::{decl_event, decl_module, decl_storage, decl_error, dispatch, Parameter, debug,
+use frame_support::{decl_event, decl_module, decl_storage, decl_error, dispatch, Parameter,
 	traits::{Currency, Get, LockableCurrency, ReservableCurrency},
 	weights::Weight,};
 use frame_system::{self as system, ensure_signed};
@@ -33,11 +33,11 @@ pub struct Validator<AccountId, Dynasty, BalanceOf> {
 
 /// Check point record for each dynasty
 #[derive(Encode, Decode, Clone, Default)]
-pub struct CheckPoints<BalanceOf, ValidatorId> where ValidatorId: Ord {
+pub struct CheckPoints<BalanceOf, CasperValidatorId> where CasperValidatorId: Ord {
 // pub struct CheckPoints<BalanceOf> {
 	cur_dyn_deposits: BalanceOf,
 	prev_dyn_deposits: BalanceOf,
-	vote_account_set: BTreeSet<ValidatorId>,
+	vote_account_set: BTreeSet<CasperValidatorId>,
 	is_justified: bool,
 	is_finalized: bool,
 }
@@ -76,7 +76,7 @@ pub trait Trait: system::Trait {
 		+ From<Self::BlockNumber>
 		+ Into<Self::BlockNumber>;
 
-	type ValidatorId: Parameter
+	type CasperValidatorId: Parameter
 		+ AtLeast32Bit
 		+ Codec
 		+ Default
@@ -128,7 +128,7 @@ decl_error! {
 decl_storage! {
 	trait Store for Module<T: Trait> as Casper {
 		/// Simple variable
-		pub NextValidatorId get(fn next_validator_id): T::ValidatorId;
+		pub NextValidatorId get(fn next_validator_id): T::CasperValidatorId;
 		pub CurrentEpoch get(fn current_epoch): T::Epoch;
 		pub CurrentDynasty get(fn current_dynasty): T::Dynasty;
 
@@ -144,12 +144,14 @@ decl_storage! {
 		pub TotalPreDynastyDeposit get(fn total_pre_dyn_deposits): BalanceOf<T>;
 
 		pub RecommendedTargetHash get(fn recommended_target_hash): T::Hash;
+		pub LastFinalizedHash get(fn last_finalized_hash): T::Hash;
+
 
 		/// Map variable
-		pub ValidatorById get(fn validator_by_id): map hasher(twox_64_concat) T::ValidatorId => Option<Validator<T::AccountId, T::Dynasty, BalanceOf<T>>>;
+		pub ValidatorById get(fn validator_by_id): map hasher(twox_64_concat) T::CasperValidatorId => Option<Validator<T::AccountId, T::Dynasty, BalanceOf<T>>>;
 		
 		/// Validator Id map to withdraw account
-		pub ValidatorIdByAccount get(fn validator_id_by_account): map hasher(twox_64_concat) T::AccountId => T::ValidatorId;
+		pub ValidatorIdByAccount get(fn validator_id_by_account): map hasher(twox_64_concat) T::AccountId => T::CasperValidatorId;
 		
 		/// Hash for each dynasty to be finalized
 		pub CheckPointHash get(fn check_point_hash): map hasher(twox_64_concat) T::Dynasty => T::Hash;
@@ -168,7 +170,7 @@ decl_storage! {
 		pub DynastyInEpoch get(fn dynasty_in_epoch): map hasher(twox_64_concat) T::Epoch => T::Dynasty;
 
 		/// CheckPoint information for each epoch
-		pub CheckPointsByEpoch get(fn check_points_by_epoch): map hasher(twox_64_concat) T::Epoch => CheckPoints<BalanceOf<T>, T::ValidatorId>;
+		pub CheckPointsByEpoch get(fn check_points_by_epoch): map hasher(twox_64_concat) T::Epoch => CheckPoints<BalanceOf<T>, T::CasperValidatorId>;
 		// pub CheckPointsByEpoch get(fn check_points_by_epoch): map hasher(twox_64_concat) T::Epoch => CheckPoints<BalanceOf<T>>;
 
 		/// Double Map
@@ -185,7 +187,7 @@ decl_module! {
 
 		/// Validator logout from casper contract
 		#[weight = 10_000]
-		pub fn logout(origin, validator_id: T::ValidatorId, epoch: T::Epoch) -> dispatch::DispatchResult {
+		pub fn logout(origin, validator_id: T::CasperValidatorId, epoch: T::Epoch) -> dispatch::DispatchResult {
 			let who = ensure_signed(origin)?;
 
 			// Check epoch for logout
@@ -218,7 +220,7 @@ decl_module! {
 
 		/// Validator withdraw depostied currency
 		#[weight = 10_000]
-		pub fn withdraw(origin, validator_id: T::ValidatorId) -> dispatch::DispatchResult {
+		pub fn withdraw(origin, validator_id: T::CasperValidatorId) -> dispatch::DispatchResult {
 			// No verify if the sender from the address of validator, since the deposit and interests will 
 			// go to withdraw account after end dynasty
 			let _ = ensure_signed(origin)?;
@@ -304,7 +306,7 @@ decl_module! {
 
 		/// Validator vote with target hash
 		#[weight = 10_000]
-		pub fn vote(origin, validator_id: T::ValidatorId, source_epoch: T::Epoch, target_epoch: T::Epoch, target_hash: T::Hash) -> 
+		pub fn vote(origin, validator_id: T::CasperValidatorId, source_epoch: T::Epoch, target_epoch: T::Epoch, target_hash: T::Hash) -> 
 			dispatch::DispatchResult {
 			// Check that its a valid signature
 			let who = ensure_signed(origin)?;
@@ -337,11 +339,12 @@ decl_module! {
 				// Justify the epoch if enough vote agreed on the hash
 					if !<CheckPointsByEpoch<T>>::get(target_epoch).is_justified {
 					<CheckPointsByEpoch<T>>::mutate(target_epoch, |value| value.is_justified = true);
-					<LastFinalizedEpoch<T>>::mutate(|value| *value = target_epoch);
+					<LastJustifiedEpoch<T>>::mutate(|value| *value = target_epoch);
 					MainHashJustified::set(true);
 
 					// Finalize the source epoch if two epochs justified consecutively
 					if target_epoch == source_epoch + One::one() {
+						<LastFinalizedHash<T>>::mutate(|value| *value = target_hash);
 						<LastFinalizedEpoch<T>>::mutate(|value| *value = source_epoch);
 						<CheckPointsByEpoch<T>>::mutate(source_epoch, |value| value.is_finalized = true);
 					}
@@ -374,39 +377,33 @@ decl_module! {
 
 impl<T: Trait> Module<T> {
 
-	pub fn proc_reward(validator_id: T::ValidatorId) {
-		if let Some(mut validator) = <ValidatorById<T>>::get(validator_id) {
-			// Compute the reward with fixed interests
-			let reward = validator.deposit.checked_div(&<BalanceOf<T>>::from(T::RewardRateBase::get())).unwrap().saturating_mul(<BalanceOf<T>>::from(T::RewardFactor::get()));
-			validator.reward += reward;
-
-			let start_dynasty = validator.start_dynasty;
-			let end_dynasty = validator.end_dynasty;
-			let current_dynasty = <CurrentDynasty<T>>::get();
-			
-			// Update current dynasty deposit or past dynasty deposit.
-			if start_dynasty <= current_dynasty && current_dynasty < end_dynasty {
-				<TotalCurrentDynastyDeposit<T>>::mutate(|value| *value += reward);
-			};
-
-			if current_dynasty > Zero::zero() {
-				let past_dynasty = current_dynasty - One::one();
-				if start_dynasty <= past_dynasty && past_dynasty < end_dynasty {
-					<TotalPreDynastyDeposit<T>>::mutate(|value| *value += reward);
-				}
-			};
-	
-			<WithdrawedDepositInDynasty<T>>::mutate(end_dynasty, |value| *value += validator.deposit);
-		}
+	/// Compute the reward and put into validator.
+	pub fn proc_reward(validator_id: T::CasperValidatorId) {
+		match <ValidatorById<T>>::get(validator_id) {
+			Some(validator) => {
+				// Compute the reward with fixed interests
+				let new_reward = validator.deposit.checked_div(&<BalanceOf<T>>::from(T::RewardRateBase::get())).unwrap().saturating_mul(<BalanceOf<T>>::from(T::RewardFactor::get()));
+				// Update validator for reward
+				<ValidatorById<T>>::mutate(validator_id, |value| *value = Some(Validator {
+					deposit: validator.deposit,
+					reward: validator.reward + new_reward,
+					start_dynasty: validator.start_dynasty,
+					end_dynasty: validator.end_dynasty,
+					address: validator.address.clone(),
+					withdraw_address: validator.withdraw_address.clone(),
+				}))
+			},
+			None => {},
+		}	
 	}
 
-	
-
+	/// Get the hash from system pallet.
 	fn get_hash(block_number: T::BlockNumber) -> T::Hash {
 		<system::Module<T>>::block_hash(block_number)
 	}
 
-	fn in_dynasty(validator_id: T::ValidatorId, dynasty: T::Dynasty) -> bool {
+	/// If dynasty between validator's start dynasty and end dynasty
+	fn in_dynasty(validator_id: T::CasperValidatorId, dynasty: T::Dynasty) -> bool {
 		let validator = Self::validator_by_id(validator_id);
 		match validator {
 			Some(data) => {
@@ -417,7 +414,7 @@ impl<T: Trait> Module<T> {
 	}
 
 	/// Check if a validator can vote with correct parameter source epoch, target epoch and target hash
-	fn ensure_votable(sender: T::AccountId, validator_id: T::ValidatorId, source_epoch: T::Epoch, target_epoch: T::Epoch, 
+	fn ensure_votable(sender: T::AccountId, validator_id: T::CasperValidatorId, source_epoch: T::Epoch, target_epoch: T::Epoch, 
 		target_hash: T::Hash) -> dispatch::DispatchResult {
 	
 		// Only vote for current epoch is allowed
@@ -469,8 +466,9 @@ impl<T: Trait> Module<T> {
 	
 				// Rotate the deposit for previous and current dynasty
 				<TotalPreDynastyDeposit<T>>::mutate(|value| *value = <TotalCurrentDynastyDeposit<T>>::get());
-				<TotalCurrentDynastyDeposit<T>>::mutate(|value| *value = <NewDepositInDynasty<T>>::get(<CurrentDynasty<T>>::get()) -
-				<WithdrawedDepositInDynasty<T>>::get(<CurrentDynasty<T>>::get()));
+				<TotalCurrentDynastyDeposit<T>>::mutate(|value| *value = *value + 
+					<NewDepositInDynasty<T>>::get(<CurrentDynasty<T>>::get()) -
+					<WithdrawedDepositInDynasty<T>>::get(<CurrentDynasty<T>>::get()));
 	
 				// Map the dynasty to epoch
 				<DynastyStartEpoch<T>>::mutate(<CurrentDynasty<T>>::get(), |value| *value = <CurrentEpoch<T>>::get());
@@ -498,6 +496,8 @@ impl<T: Trait> Module<T> {
 		let last_epoch = Self::current_epoch() - One::one();
 		MainHashJustified::mutate(|value| *value = true);
 
+		let epoch_length_as_epoch: T::Epoch = T::EpochLength::get().into();
+		<LastFinalizedHash<T>>::mutate(|value| *value = Self::get_hash((last_epoch * epoch_length_as_epoch).into()));
 		<LastFinalizedEpoch<T>>::mutate(|value| *value = last_epoch);
 		<LastJustifiedEpoch<T>>::mutate(|value| *value = last_epoch);
 
@@ -523,7 +523,7 @@ impl<T: Trait> Module<T> {
 			<CheckPointsByEpoch<T>>::insert(epoch, CheckPoints {
 				cur_dyn_deposits: Self::total_cur_dyn_deposits(),
 				prev_dyn_deposits: Self::total_pre_dyn_deposits(),
-				vote_account_set: BTreeSet::<T::ValidatorId>::new(),
+				vote_account_set: BTreeSet::<T::CasperValidatorId>::new(),
 				..Default::default()
 			});
 
@@ -559,12 +559,12 @@ decl_event!(
 	<T as system::Trait>::Hash,
 	<T as Trait>::Dynasty,
 	<T as Trait>::Epoch,
-	<T as Trait>::ValidatorId,
+	<T as Trait>::CasperValidatorId,
 	{
 		Deposit(AccountId, AccountId, Dynasty),
-		Vote(AccountId, ValidatorId, Epoch, Epoch, Hash),
-		Logout(ValidatorId, Epoch),
-		Withdraw(ValidatorId),
+		Vote(AccountId, CasperValidatorId, Epoch, Epoch, Hash),
+		Logout(CasperValidatorId, Epoch),
+		Withdraw(CasperValidatorId),
 	}
 );
 

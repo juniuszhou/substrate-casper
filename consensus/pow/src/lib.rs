@@ -31,6 +31,10 @@
 //! as the storage, but it is not recommended as it won't work well with light
 //! clients.
 
+use std::cell::RefCell;
+// use std::sync::RwLock;
+use std::sync::Mutex;
+
 use std::sync::Arc;
 use std::any::Any;
 use std::borrow::Cow;
@@ -60,6 +64,10 @@ use sc_client_api;
 use sc_client_api::{LockImportRun, Finalizer,};
 use log::*;
 use sp_timestamp::{InherentError as TIError, TimestampInherentData};
+
+// casper needed
+use pallet_casper_runtime_api::CasperRuntimeApi;
+type Epoch = casper_runtime::Epoch;
 
 #[derive(derive_more::Display, Debug)]
 pub enum Error<B: BlockT> {
@@ -198,6 +206,7 @@ pub struct PowBlockImport<BE, B: BlockT, I, C, S, Algorithm> {
 	client: Arc<C>,
 	inherent_data_providers: sp_inherents::InherentDataProviders,
 	check_inherents_after: <<B as BlockT>::Header as HeaderT>::Number,
+	last_finalized_hash: Mutex<RefCell<B::Hash>>,
 	_phantom: PhantomData<BE>,
 }
 
@@ -210,15 +219,11 @@ impl<BE, B: BlockT, I: Clone, C, S: Clone, Algorithm: Clone> Clone for PowBlockI
 			client: self.client.clone(),
 			inherent_data_providers: self.inherent_data_providers.clone(),
 			check_inherents_after: self.check_inherents_after.clone(),
+			last_finalized_hash: Default::default(),
 			_phantom: Default::default(),
 		}
 	}
 }
-
-// pub trait ClientForPow<Block>: LockImportRun<Block, BE> + Finalizer<Block, BE>
-// 	where BE: Backend<Block>,
-// 		Block: BlockT,
-// {}
 
 impl<BE, B, I, C, S, Algorithm> PowBlockImport<BE, B, I, C, S, Algorithm> where
 	B: BlockT,
@@ -227,7 +232,7 @@ impl<BE, B, I, C, S, Algorithm> PowBlockImport<BE, B, I, C, S, Algorithm> where
 	I::Error: Into<ConsensusError>,
 	C: ProvideRuntimeApi<B> + Send + Sync + HeaderBackend<B> + AuxStore + ProvideCache<B> + BlockOf 
 	+ LockImportRun<B, BE> + Finalizer<B, BE>,
-	C::Api: BlockBuilderApi<B, Error = sp_blockchain::Error>,
+	C::Api: BlockBuilderApi<B, Error = sp_blockchain::Error> + CasperRuntimeApi<B, Epoch>,
 	Algorithm: PowAlgorithm<B>,
 {
 	/// Create a new block import suitable to be used in PoW
@@ -240,7 +245,7 @@ impl<BE, B, I, C, S, Algorithm> PowBlockImport<BE, B, I, C, S, Algorithm> where
 		inherent_data_providers: sp_inherents::InherentDataProviders,
 	) -> Self {
 		Self { inner, client, algorithm, check_inherents_after,
-			   select_chain, inherent_data_providers, _phantom: PhantomData, }
+			   select_chain, inherent_data_providers,last_finalized_hash: Default::default(), _phantom: PhantomData, }
 	}
 
 	fn check_inherents(
@@ -292,7 +297,7 @@ impl<BE, B, I, C, S, Algorithm> BlockImport<B> for PowBlockImport<BE, B, I, C, S
 	S: SelectChain<B>,
 	C: ProvideRuntimeApi<B> + Send + Sync + HeaderBackend<B> + AuxStore + ProvideCache<B> + BlockOf 
 	+ LockImportRun<B, BE> + Finalizer<B, BE>,
-	C::Api: BlockBuilderApi<B, Error = sp_blockchain::Error>,
+	C::Api: BlockBuilderApi<B, Error = sp_blockchain::Error> + CasperRuntimeApi<B, Epoch>,
 	Algorithm: PowAlgorithm<B>,
 	Algorithm::Difficulty: 'static,
 {
@@ -381,27 +386,21 @@ impl<BE, B, I, C, S, Algorithm> BlockImport<B> for PowBlockImport<BE, B, I, C, S
 		}
 
 		let result = self.inner.import_block(block, new_cache).map_err(Into::into);
-		// if result.is_ok() {
-		info!("Junius try to finalize the block at {:?}, import result is {:?}", pre_hash.clone(), result);
-		finalize_block(self.client.clone(), parent_hash);
-		// finalize_block(self.client.clone(), pre_hash);
-		// }
+
+		if let Ok(last_finalized_hash) = self.client.runtime_api().get_last_finalized_hash(&BlockId::hash(parent_hash)) {
+
+			if *self.last_finalized_hash.lock().unwrap().borrow() != last_finalized_hash {
+				self.last_finalized_hash.lock().unwrap().replace(last_finalized_hash);
+
+				info!("Last finalized hash changed, call apply finality and it can't be reverted in the future.");
+				let _ = self.client.lock_import_and_run(|import_op| {
+					self.client.apply_finality(import_op, BlockId::Hash(last_finalized_hash), None, true)
+					
+				});
+			}
+		}
 		result
-		//self.inner.finalize_block().map_err(Into::into);
 	}
-}
-
-pub fn finalize_block<BE, Block, Client>(client: Arc<Client>, hash: Block::Hash,) where
-	Block:  BlockT,
-	BE: Backend<Block>,
-	Client: LockImportRun<Block, BE> + Finalizer<Block, BE>, {
-		let result = client.lock_import_and_run(|import_op| {
-			let inner_result = client.apply_finality(import_op, BlockId::Hash(hash), None, true);
-			info!("Junius apply_finality result is {:?}", inner_result);
-			inner_result
-		});
-		info!("Junius lock_import_and_run finalize block result is {:?}", result);
-
 }
 
 /// A verifier for PoW blocks.
@@ -642,7 +641,7 @@ fn mine_loop<B: BlockT, C, Algorithm, E, SO, S, CAW>(
 				Probably a node update is required!",
 				err,
 			);
-			std::thread::sleep(std::time::Duration::from_secs(1));
+			// std::thread::sleep(std::time::Duration::from_secs(1));
 			continue 'outer
 		}
 
