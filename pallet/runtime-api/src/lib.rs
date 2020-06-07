@@ -2,9 +2,7 @@
 
 use sp_runtime::traits::Block as BlockT;
 
-// Here we declare the runtime API. It is implemented it the `impl` block in
-// runtime amalgamator file (the `runtime/src/lib.rs`)
-// Reference as AuraApi
+// Runtime API for casper pallet
 sp_api::decl_runtime_apis! {
 
 	pub trait CasperRuntimeApi<Epoch> where

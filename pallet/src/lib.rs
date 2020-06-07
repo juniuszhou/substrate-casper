@@ -2,8 +2,8 @@
 #![allow(clippy::string_lit_as_bytes)]
 
 //! A pallet to implememt the simplified Casper FFG consensus.
-//! For example, the slash not implemented, the reward interests is a fixed number,
-//! 1 / 10000 for example. 
+//! For example, the slash not implemented. 
+//! The reward interests is a fixed number, 1 / 10000 defined in the runtime. 
 //! Just use the pallet to show how to introduce a new consensus for substrate.
 //! Reference link: https://eips.ethereum.org/EIPS/eip-1011
 //! Python Implementation: https://github.com/ethereum/casper/tree/master/casper/contracts
@@ -17,28 +17,35 @@ use sp_runtime::traits::{AtLeast32Bit, MaybeSerialize, Member, One, Zero, Checke
 
 use sp_std::collections::btree_set::BTreeSet;
 
-#[cfg(test)]
-mod tests;
-
 /// Info for each validator
 #[derive(Encode, Decode, Clone, Copy, PartialEq, Eq)]
 pub struct Validator<AccountId, Dynasty, BalanceOf> {
+	// Deposited balance of the validator
 	pub deposit: BalanceOf,
+	// Reward got for correct vote
 	pub reward: BalanceOf,
+	// Start dynasty for validator can vote
 	pub start_dynasty: Dynasty,
+	// End dynasty for validator can vote
 	pub end_dynasty: Dynasty,
+	// Validator address 
 	pub address: AccountId,
+	// Address to get the reward and deposit back
 	pub withdraw_address: AccountId,
 }
 
 /// Check point record for each dynasty
 #[derive(Encode, Decode, Clone, Default)]
 pub struct CheckPoints<BalanceOf, CasperValidatorId> where CasperValidatorId: Ord {
-// pub struct CheckPoints<BalanceOf> {
+	// Total deposit of current dynasty
 	cur_dyn_deposits: BalanceOf,
+	// Total deposit of previous dynasty
 	prev_dyn_deposits: BalanceOf,
+	// All validators who voted in current dynasty
 	vote_account_set: BTreeSet<CasperValidatorId>,
+	// If this dynasty is justified
 	is_justified: bool,
+	// If this dynasty is finalized
 	is_finalized: bool,
 }
 
@@ -52,6 +59,7 @@ pub trait Trait: system::Trait {
 	type Currency: ReservableCurrency<Self::AccountId>
 	+ LockableCurrency<Self::AccountId, Moment = Self::BlockNumber>;
 
+	/// Dynasty type 
 	type Dynasty: Parameter
 		+ AtLeast32Bit
 		+ Codec
@@ -63,6 +71,7 @@ pub trait Trait: system::Trait {
 		+ From<u32>
 		+ Into<u32>;
 	
+	/// Epoch type
 	type Epoch: Parameter
 		+ AtLeast32Bit
 		+ Codec
@@ -76,6 +85,7 @@ pub trait Trait: system::Trait {
 		+ From<Self::BlockNumber>
 		+ Into<Self::BlockNumber>;
 
+	/// Validator Id type, the ValidatorId is reserved by system
 	type CasperValidatorId: Parameter
 		+ AtLeast32Bit
 		+ Codec
@@ -127,9 +137,13 @@ decl_error! {
 
 decl_storage! {
 	trait Store for Module<T: Trait> as Casper {
-		/// Simple variable
+		/// Next validator Id start from 1, 0 reserved for not existed validator
 		pub NextValidatorId get(fn next_validator_id): T::CasperValidatorId;
+
+		/// Current epoch 
 		pub CurrentEpoch get(fn current_epoch): T::Epoch;
+
+		/// Current dynasty
 		pub CurrentDynasty get(fn current_dynasty): T::Dynasty;
 
 		/// Epoch as source epoch for vote
@@ -138,16 +152,25 @@ decl_storage! {
 		/// If the block hash of current epoch justified
 		pub MainHashJustified get(fn main_hash_justified): bool;
 
+		/// Last finalized epoch
 		pub LastFinalizedEpoch get(fn last_finalized_epoch): T::Epoch;
+
+		/// Last justified epoch
 		pub LastJustifiedEpoch get(fn last_justified_epoch): T::Epoch;
+
+		/// Total balance depostied in current dynasty
 		pub TotalCurrentDynastyDeposit get(fn total_cur_dyn_deposits): BalanceOf<T>;
+
+		/// Total balance depostied in previous dynasty
 		pub TotalPreDynastyDeposit get(fn total_pre_dyn_deposits): BalanceOf<T>;
 
+		/// Target hash for validator to vote
 		pub RecommendedTargetHash get(fn recommended_target_hash): T::Hash;
+
+		/// Last blockhash finalized
 		pub LastFinalizedHash get(fn last_finalized_hash): T::Hash;
 
-
-		/// Map variable
+		/// Validator Id map to validator
 		pub ValidatorById get(fn validator_by_id): map hasher(twox_64_concat) T::CasperValidatorId => Option<Validator<T::AccountId, T::Dynasty, BalanceOf<T>>>;
 		
 		/// Validator Id map to withdraw account
@@ -171,10 +194,10 @@ decl_storage! {
 
 		/// CheckPoint information for each epoch
 		pub CheckPointsByEpoch get(fn check_points_by_epoch): map hasher(twox_64_concat) T::Epoch => CheckPoints<BalanceOf<T>, T::CasperValidatorId>;
-		// pub CheckPointsByEpoch get(fn check_points_by_epoch): map hasher(twox_64_concat) T::Epoch => CheckPoints<BalanceOf<T>>;
 
 		/// Double Map
 		pub CurrentDynastyVotes get(fn current_dynasty_votes): double_map hasher(twox_64_concat) T::Dynasty, hasher(twox_64_concat) T::Epoch => BalanceOf<T>;
+		
 		pub PreDynastyVotes get(fn pre_dynasty_votes): double_map hasher(twox_64_concat) T::Dynasty, hasher(twox_64_concat) T::Epoch => BalanceOf<T>;
 	}
 }
@@ -213,6 +236,7 @@ decl_module! {
 				return Err(Error::<T>::ValidatorNotRegistered.into());
 			}
 
+			// Save event to system
 			Self::deposit_event(RawEvent::Logout(validator_id, epoch));
 
 			Ok(())
@@ -317,23 +341,26 @@ decl_module! {
 			let mut new_current_dynasty_votes = <CurrentDynastyVotes<T>>::get(<CurrentDynasty<T>>::get(), source_epoch);
 			let mut new_previous_dynasty_votes = <PreDynastyVotes<T>>::get(<CurrentDynasty<T>>::get(), source_epoch);
 
-			
+			// Check if vote in dynasty between start and end
 			if Self::in_dynasty(validator_id, <CurrentDynasty<T>>::get()) {
 				if let Some(validator) = <ValidatorById<T>>::get(validator_id) {
 					new_current_dynasty_votes += validator.deposit;
 				};
 			};
 
+			// Add new validator's deposit into total deposit
 			if <CurrentDynasty<T>>::get() > Zero::zero() && Self::in_dynasty(validator_id, <CurrentDynasty<T>>::get() - One::one()) {
 				if let Some(validator) = <ValidatorById<T>>::get(validator_id) {
 					new_previous_dynasty_votes += validator.deposit;
 				};
 			};
 
+			// Give reward if source epoch match 
 			if <ExpectedSourceEpoch<T>>::get() == source_epoch {
 				Self::proc_reward(validator_id);
 			}
 
+			// If over 2/3 vote agreed on the same block hash
 			if new_current_dynasty_votes.saturating_mul(3.into()) >= <TotalCurrentDynastyDeposit<T>>::get().saturating_mul(2.into()) &&
 				new_previous_dynasty_votes.saturating_mul(3.into()) >= <TotalPreDynastyDeposit<T>>::get().saturating_mul(2.into()) {
 				// Justify the epoch if enough vote agreed on the hash
@@ -351,6 +378,7 @@ decl_module! {
 				}
 			}
 
+			// Put validator id into set
 			<CheckPointsByEpoch<T>>::mutate(target_epoch, |value| value.vote_account_set.insert(validator_id));
 
 			Self::deposit_event(RawEvent::Vote(who, validator_id, source_epoch, target_epoch, target_hash));
@@ -496,6 +524,7 @@ impl<T: Trait> Module<T> {
 		let last_epoch = Self::current_epoch() - One::one();
 		MainHashJustified::mutate(|value| *value = true);
 
+		// Update all finalize related variables
 		let epoch_length_as_epoch: T::Epoch = T::EpochLength::get().into();
 		<LastFinalizedHash<T>>::mutate(|value| *value = Self::get_hash((last_epoch * epoch_length_as_epoch).into()));
 		<LastFinalizedEpoch<T>>::mutate(|value| *value = last_epoch);

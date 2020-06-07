@@ -32,9 +32,7 @@
 //! clients.
 
 use std::cell::RefCell;
-// use std::sync::RwLock;
 use std::sync::Mutex;
-
 use std::sync::Arc;
 use std::any::Any;
 use std::borrow::Cow;
@@ -65,7 +63,7 @@ use sc_client_api::{LockImportRun, Finalizer,};
 use log::*;
 use sp_timestamp::{InherentError as TIError, TimestampInherentData};
 
-// casper needed
+/// casper runtime api and type
 use pallet_casper_runtime_api::CasperRuntimeApi;
 type Epoch = casper_runtime::Epoch;
 
@@ -206,6 +204,7 @@ pub struct PowBlockImport<BE, B: BlockT, I, C, S, Algorithm> {
 	client: Arc<C>,
 	inherent_data_providers: sp_inherents::InherentDataProviders,
 	check_inherents_after: <<B as BlockT>::Header as HeaderT>::Number,
+	// To store last finalized hash got from casper pallet
 	last_finalized_hash: Mutex<RefCell<B::Hash>>,
 	_phantom: PhantomData<BE>,
 }
