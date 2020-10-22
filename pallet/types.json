@@ -1,79 +1,38 @@
 {
-    "RuntimeDbWeight": "u32",
-    "Dynasty": "u32",
-    "Epoch": "u32",
-    "CasperValidatorId": "u32",
-    "RewardFactor": "u32",
+  "RuntimeDbWeight": "u32",
+  "Dynasty": "u32",
+  "Epoch": "u32",
+  "CasperValidatorId": "u128",
+  "RewardFactor": "u32",
 	"EpochLength": "u32",
 	"LogoutDelay": "u32",
 	"WithdrawDelay": "u32",
 	"MinDeposit": "u32",
-    "RewardRateBase": "u128",
-    "Validator": {
-        "deposit": "u128",
-        "reward": "u128",
-        "start_dynasty": "Dynasty",
-        "end_dynasty": "Dynasty",
-        "address": "AccountId",
-        "withdraw_address": "AccountId"
+  "RewardRateBase": "u128",
+  "Validator": {
+    "deposit": "u128",
+    "reward": "u128",
+    "start_dynasty": "Dynasty",
+    "end_dynasty": "Dynasty",
+    "address": "AccountId",
+    "withdraw_address": "AccountId"
+  },
+  "CheckPoints": {
+    "cur_dyn_deposits": "u128",
+    "prev_dyn_deposits": "u128",
+    "vote_account_set": "BTreeSet<CasperValidatorId>",
+    "is_justified": "bool",
+    "is_finalized": "bool"
+  },
+  "MultiSignature": {
+      "_enum": {
+        "Ed25519": "Ed25519Signature",
+        "Sr25519": "Sr25519Signature",
+        "Ecdsa": "EcdsaSignature"
+      }
     },
-    "CheckPoints": {
-        "cur_dyn_deposits": "u128",
-        "prev_dyn_deposits": "u128",
-        "vote_account_set": "BTreeSet<CasperValidatorId>",
-        "is_justified": "bool",
-        "is_finalized": "bool"
-    },
-    "MultiSignature": {
-        "_enum": {
-          "Ed25519": "Ed25519Signature",
-          "Sr25519": "Sr25519Signature",
-          "Ecdsa": "EcdsaSignature"
-        }
-      },
-      "EcdsaSignature": "[u8; 65]",
-      "Ed25519Signature": "H512",
-      "Sr25519Signature": "H512",
-      "Address": "AccountId",
-  "LookupSource": "AccountId",
-  "ContinuousAccountData": {
-    "principal": "u64",
-    "deposit_date": "BlockNumber"
-  },
-  "U16F16": "[u8; 4]",
-  "GroupIndex": "u32",
-  "TaskId": "Vec<u8>",
-  "PriorityScore": "u32",
-  "RoundIndex": "u32",
-  "Task": {
-    "id": "TaskId",
-    "score": "PriorityScore",
-    "proposed_at": "BlockNumber"
-  },
-  "ValueStruct": {
-    "integer": "i32",
-    "boolean": "bool"
-  },
-  "BufferIndex": "u8",
-  "AccountIdOf": "AccountId",
-  "BalanceOf": "Balance",
-  "FundInfoOf": "FundInfo",
-  "FundInfo": {
-    "beneficiary": "AccountId",
-    "deposit": "Balance",
-    "raised": "Balance",
-    "end": "BlockNumber",
-    "goal": "Balance"
-  },
-  "FundIndex": "u32",
-  "InnerThing": {
-    "number": "u32",
-    "hash": "Hash",
-    "balance": "Balance"
-  },
-  "SuperThing": {
-    "super_number": "u32",
-    "inner_thing": "InnerThing"
-  },
-  "InnerThingOf": "InnerThing"
+  "EcdsaSignature": "[u8; 65]",
+  "Ed25519Signature": "H512",
+  "Sr25519Signature": "H512",
+  "Address": "AccountId"
 }

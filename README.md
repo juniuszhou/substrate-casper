@@ -35,5 +35,9 @@ The reward interests is a fixed number, 1 / 10000 defined in the runtime, and re
     
    application running entity, compose all components and start the program
 
+## build and deployment
+cargo +nightly build --release
+target/release/pow-casper --dev
+
 ## future work
 The implementation is not industry-ready yet. There are lots of details in protocol to be implemented.
